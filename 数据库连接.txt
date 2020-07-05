@@ -18,7 +18,7 @@ def mysql_data_reader(dbname,id):
             L.append(resnst)
             data = gzip.decompress(resData)
             for element in json.loads(data):
-                L.append(element['y'])
+                L.append(int(element['y']))
             res=L
         else:
             res = 0
