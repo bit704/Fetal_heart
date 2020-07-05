@@ -1,0 +1,31 @@
+# -*- coding: utf-8 -*-
+
+import MySQLdb
+import gzip
+import json
+
+def mysql_data_reader(dbname,id):
+    conn=MySQLdb.connect(host='localhost',user='root',passwd='',db=dbname)
+    cursor=conn.cursor()
+    sql="select id,data,nst_result from export_data where id=%s"%id
+    cursor.execute(sql)
+    
+    res=0
+    
+    for(resId,resData,resnst)in cursor:
+        if(resData): #if data is not null, execute gzip
+            L=[]
+            L.append(resnst)
+            data = gzip.decompress(resData)
+            for element in json.loads(data):
+                L.append(element['y'])
+            res=L
+        else:
+            res = 0
+            
+    cursor.close()
+    conn.close()
+    return res
+
+
+

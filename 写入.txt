@@ -1,0 +1,67 @@
+# -*- coding: utf-8 -*-
+
+import MySQLdb
+import gzip
+import json
+
+def txt_data_writer(filename):
+    
+    fileObject=open(filename+'.txt','w')
+    
+    conn=MySQLdb.connect(host='localhost',user='root',passwd='',db='')
+    cursor=conn.cursor()
+    for id in range(60000):
+        L=[]
+        sql="select id,data,nst_result from export_data where id=%s"%id
+        cursor.execute(sql)
+        for(resId,resData,resnst)in cursor:
+            if(resData): #if data is not null, execute gzip
+                L.append(resnst)
+                data = gzip.decompress(resData)
+                cnt=0
+                for element in json.loads(data):
+                    cnt=cnt+1   #count data length,if length is more than 2400,cut
+                    if(cnt>2400):
+                        break
+                    if('y' in element.keys()):
+                        L.append(element['y'])
+                    else:
+                        L.append(0)
+        print(id,len(L))
+
+        if(isvalid(L)):
+            for i in range(len(L)):
+                fileObject.write('%s'%L[i])
+                fileObject.write(' ')
+            fileObject.write('\n')
+                
+            
+    cursor.close()
+    conn.close()
+    fileObject.close()
+    return 0
+
+def isvalid(L): #判断该数据是否有效，总缺失长度大于120、最大连续缺失长度大于30的数据判为无效
+    zero_count=0             #一段连续缺失的长度
+    total_zero_cout=0        #总的缺失长度
+    max_continuous_cout=0    #最大连续缺失长度
+    L.append(1)  #末尾加个1，避免以下计算漏掉末尾的连续缺失值
+    
+    print(len(L))
+    
+    if(len(L)<2402):
+        return False
+        
+    for i in range(0,2401):
+        if(L[i]=="0"):
+            zero_count+=1
+        else:
+            if(zero_count>max_continuous_cout):
+                max_continuous_cout=zero_count #更新最大连续缺失长度
+            total_zero_cout+=zero_count        #计入总缺失长度
+            zero_count=0                        
+    if(total_zero_cout>120 or max_continuous_cout>30): 
+        return False
+    else: 
+        return True
+    
