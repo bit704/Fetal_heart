@@ -24,7 +24,7 @@ def txt_data_writer(filename):
                     if(cnt>2400):
                         break
                     if('y' in element.keys()):
-                        L.append(element['y'])
+                        L.append(int(element['y']))
                     else:
                         L.append(0)
         print(id,len(L))
