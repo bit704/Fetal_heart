@@ -10,6 +10,8 @@ def txt_data_writer(filename):
     
     conn=MySQLdb.connect(host='localhost',user='root',passwd='King5dom9yjh2018',db='test1')
     cursor=conn.cursor()
+    
+    valid_data_number=0
     for id in range(60000):
         L=[]
         sql="select id,data,nst_result from export_data where id=%s"%id
@@ -29,7 +31,8 @@ def txt_data_writer(filename):
                         L.append(0)
         print(id,len(L))
 
-        if(isvalid(L)):
+        if(isvalid(L) and L[0]!=4):
+            valid_data_number+=1
             for i in range(len(L)):
                 fileObject.write('%s'%L[i])
                 fileObject.write(' ')
@@ -39,7 +42,7 @@ def txt_data_writer(filename):
     cursor.close()
     conn.close()
     fileObject.close()
-    return 0
+    return valid_data_number
 
 def isvalid(L): #判断该数据是否有效，总缺失长度大于120、最大连续缺失长度大于30的数据判为无效
     zero_count=0             #一段连续缺失的长度
@@ -62,7 +65,7 @@ def isvalid(L): #判断该数据是否有效，总缺失长度大于120、最大
             if(zero_count>0):
                 repair(L, i-zero_count, i-1)       #修复数据
             zero_count=0  
-                              
+    L.pop();                          
     if(total_zero_cout>120 or max_continuous_cout>30): 
         return False
     else: 
@@ -85,4 +88,3 @@ def repair(L,l,r): #用线性插值法修复数据
             L[i]=str(p)
             
     return 0
-   
