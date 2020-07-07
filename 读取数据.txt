@@ -1,0 +1,6 @@
+def data_reader(filename,rownum):   #read data of rownum-th row, and return a list without '\n'
+    with open(filename+'.txt', "r") as fileobject:
+        fetaldata = fileobject.readlines()
+        L=fetaldata[rownum].split()
+    print(L)
+    return L
