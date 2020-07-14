@@ -1,0 +1,19 @@
+import zipfile
+
+f = zipfile.ZipFile("/home/aistudio/external-libraries/train_data.zip",'r') # 原压缩文件在服务器的位置
+
+for file in f.namelist():
+    f.extract(file,"/home/aistudio/external-libraries/") 
+
+f.close()
+
+---------------------
+
+import zipfile
+
+f = zipfile.ZipFile("/home/aistudio/external-libraries/test_data.zip",'r') # 原压缩文件在服务器的位置
+
+for file in f.namelist():
+    f.extract(file,"/home/aistudio/external-libraries/") 
+
+f.close()
