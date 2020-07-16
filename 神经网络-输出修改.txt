@@ -110,7 +110,11 @@ all_train_accs=[]
 all_test_iters=[]
 all_test_costs=[]
 all_test_accs=[]
-
+"""
+path = "/home/aistudio/external-libraries/models"
+if os.path.exists(path):
+    fluid.io.load_persistables(exe, path, fluid.default_startup_program())
+"""
 print('begin training!')
 for pass_id in range(EPOCH_NUM):
     train_accs = []
@@ -145,10 +149,14 @@ for pass_id in range(EPOCH_NUM):
     all_test_accs.append(test_acc_average)
     all_test_costs.append(test_cost_average)
 
-# 每轮训练完成后，对模型进行一次保存，使用飞桨提供的fluid.io.save_inference_model()进行模型保存：
-# 保存模型
-# 如果保存路径不存在就创建
 """
+    prog = fluid.default_main_program()
+    path = "/home/aistudio/external-libraries/models"
+    if not os.path.exists(path):
+        os.makedirs(path)
+    fluid.io.save_persistables(exe, path, prog)
+    print('succeed in saving!')
+	
 model_save_dir ="/home/aistudio/external-libraries/work"
 if not os.path.exists(model_save_dir):
     os.makedirs(model_save_dir)
