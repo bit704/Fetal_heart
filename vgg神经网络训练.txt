@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 %matplotlib inline
 import os
 import paddle
@@ -101,37 +99,31 @@ exe.run(fluid.default_startup_program())
 
 feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
-EPOCH_NUM = 10
+EPOCH_NUM = 5
 #训练过程数据记录
-all_train_iter=0
 all_train_iters=[]
 all_train_costs=[]
 all_train_accs=[]
 
 
 #测试过程数据记录
-all_test_iter=0
 all_test_iters=[]
 all_test_costs=[]
 all_test_accs=[]
-model_save_dir ="/home/aistudio/external-libraries/work"
-
+"""
 path = "/home/aistudio/external-libraries/models"
 if os.path.exists(path):
     fluid.io.load_persistables(exe, path, fluid.default_startup_program())
-
+"""
 print('begin training!')
 for pass_id in range(EPOCH_NUM):
-    # 开始训练
-    for batch_id, data in enumerate(train_reader()):      #遍历训练集，并为数据加上索引batch_id
-        train_cost,train_acc =exe.run(program=fluid.default_main_program(),#运行主程序
-                             feed=feeder.feed(data),                 #喂入一个batch的数据
-                            fetch_list=[avg_cost, accuracy])         #fetch均方误差和准确率
-        all_train_iter=all_train_iter+BATCH_SIZE
-        all_train_iters.append(all_train_iter)
-        all_train_costs.append(train_cost[0])
-        all_train_accs.append(train_acc[0])
-        #每10次batch打印一次训练、进行一次测试
+    train_accs = []
+    train_costs = []
+    for batch_id, data in enumerate(train_reader()):
+        train_cost,train_acc =exe.run(program=fluid.default_main_program(),feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch均方误差和准确率        
+        train_costs.append(train_cost[0])
+        train_accs.append(train_acc[0])
+        
         if batch_id % 100== 0:                                            
             print('Pass:%d, Batch:%d,Cost:%0.5f, Accuracy:%0.5f' %(pass_id, batch_id, train_cost[0],train_acc[0]))
     # 开始测试
@@ -139,37 +131,41 @@ for pass_id in range(EPOCH_NUM):
     test_accs = []
     print('begin test!')                                                         #测试的准确率
     for batch_id, data in enumerate(test_reader()):
-        test_cost, test_acc =exe.run(program=test_program,              #执行训练程序
-                                     feed=feeder.feed(data),            #喂入数据
-                                     fetch_list=[avg_cost, accuracy])         #fetch 误差、准确率
+        test_cost, test_acc =exe.run(program=test_program,feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch 误差、准确率
         test_costs.append(test_cost[0])                                #记录每个batch的误差
         test_accs.append(test_acc[0])                             #记录每个batch的准确率
-        all_test_iter=all_test_iter+BATCH_SIZE
-        all_test_iters.append(all_test_iter)
-        all_test_costs.append(test_cost[0])                                      
-        all_test_accs.append(test_acc[0])
-# 求测试结果的平均值
-    test_cost = (sum(test_costs) /len(test_costs))        #计算误差平均值（误差和/误差的个数）
-    test_acc = (sum(test_accs) /len(test_accs))  #计算准确率平均值（ 准确率的和/准确率的个数）
-    print('Test:%d, Cost:%0.5f, ACC:%0.5f' %(pass_id, test_cost, test_acc))
-    
+
+    test_cost_average = (sum(test_costs) /len(test_costs))        #计算误差平均值（误差和/误差的个数）
+    test_acc_average = (sum(test_accs) /len(test_accs))  #计算准确率平均值（ 准确率的和/准确率的个数）
+    train_cost_average = (sum(train_costs) /len(train_costs))
+    train_acc_average = (sum(train_accs) /len(train_accs))
+    print('Test:%d, Cost:%0.5f, ACC:%0.5f' %(pass_id, test_cost_average, test_acc_average))
+    print('Train:%d, Cost:%0.5f, ACC:%0.5f'%(pass_id, train_cost_average, train_acc_average))
+	
+    all_train_iters.append(pass_id)
+    all_train_accs.append(train_acc_average)
+    all_train_costs.append(train_cost_average)
+    all_test_iters.append(pass_id)
+    all_test_accs.append(test_acc_average)
+    all_test_costs.append(test_cost_average)
+
+"""
     prog = fluid.default_main_program()
     path = "/home/aistudio/external-libraries/models"
     if not os.path.exists(path):
         os.makedirs(path)
     fluid.io.save_persistables(exe, path, prog)
     print('succeed in saving!')
-# 每轮训练完成后，对模型进行一次保存，使用飞桨提供的fluid.io.save_inference_model()进行模型保存：
-# 保存模型
-# 如果保存路径不存在就创建
+	
+model_save_dir ="/home/aistudio/external-libraries/work"
 if not os.path.exists(model_save_dir):
     os.makedirs(model_save_dir)
 print('savemodels to %s' % (model_save_dir))
 fluid.io.save_inference_model(model_save_dir,['image'],[predict],exe)
-
+"""
 def draw_cost_process(title,iters,costs,label_cost):
     plt.title(title, fontsize=24)
-    plt.xlabel("iter", fontsize=20)
+    plt.xlabel("epoch", fontsize=20)
     plt.ylabel("cost", fontsize=20)
     plt.plot(iters,costs,color='red',label=label_cost)
     plt.legend()
@@ -178,7 +174,7 @@ def draw_cost_process(title,iters,costs,label_cost):
     
 def draw_acc_process(title,iters,acc,label_acc):
     plt.title(title, fontsize=24)
-    plt.xlabel("iter", fontsize=20)
+    plt.xlabel("epoch", fontsize=20)
     plt.ylabel("acc", fontsize=20)
     plt.plot(iters,acc,color='green',label=label_acc)
     plt.legend()
@@ -188,8 +184,5 @@ def draw_acc_process(title,iters,acc,label_acc):
 #调用绘制曲线
 draw_acc_process("training",all_train_iters, all_train_accs, "trainning acc")
 draw_acc_process("testing",all_test_iters, all_test_accs, "test acc")
-draw_cost_process("training",all_train_iters, all_train_costs, "trainning acc")
-draw_cost_process("testing",all_test_iters, all_test_costs, "test acc")
-
-
-
+draw_cost_process("training",all_train_iters, all_train_costs, "trainning cost")
+draw_cost_process("testing",all_test_iters, all_test_costs, "test cost")
