@@ -1,0 +1,62 @@
+import os
+import paddle
+import numpy as np
+import paddle.fluid as fluid
+from multiprocessing import cpu_count
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+
+
+from PIL import Image
+import io
+
+def draw_test_img(val_x,val_y):
+    buffer_ = io.BytesIO()
+    plt.axis('off')
+    plt.ylim(80,200)
+    plt.xlim(0,2400)
+    plt.rcParams['figure.figsize'] = (31, 1.6)
+    plt.plot(val_x,val_y,color='black',linewidth=0.5)
+    fig = plt.gcf()
+    fig.savefig(buffer_,dpi=100,bbox_inches='tight',pad_inches=0.0)
+    plt.show()
+    buffer_.seek(0)
+    #img=PIL.Image.open(buffer_)
+    #ar = np.asarray(img)
+    img = np.array(Image.open(buffer_).convert('L'), 'f')
+    buffer_.close()
+    return img
+#已知数据值时，用plt画出图像，转化为2402*120的数组输出
+def to_list(img):
+    L=[]
+    for i in range(2400):
+        min=255
+        mpos=60
+        for j in range(120):
+            if(int(img[j][i])<min):
+                min=img[j][i]
+                mpos=j
+        L.append(mpos)
+    return L
+#将灰度图图像读取为数组，取每个纵轴颜色最深的点
+import cv2
+def img_data_reader(filename):
+    img=cv2.imread(filename,cv2.IMREAD_GRAYSCALE)
+    return img
+#从已有图像中读取，转化为numpy数组形式的灰度图并返回
+
+#示例代码：
+def data_reader(filename,rownum):   #read data of rownum-th row, and return a list without '\n'
+    with open(filename+'.txt', "r") as fileobject:
+        fetaldata = fileobject.readlines()
+        L=fetaldata[rownum].split()
+        for i in range(len(L)):
+            L[i]=int(L[i])
+    fileobject.close()
+    return L
+img=draw_test_img(range(2400),data_reader('test_data',0))
+L=to_list(img)
+print(L)
+
+
+
