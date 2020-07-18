@@ -1,0 +1,59 @@
+#include<cstdio>
+#include<vector>
+#include<iostream>
+#include<cstring>
+#include<queue>
+#include<algorithm>
+#include<string>
+#include<ctime>
+using namespace std;
+
+string& ClearHeadTailSpace(string& str)
+{
+	if (str.empty())
+	{
+		return str;
+	}
+
+	str.erase(0, str.find_first_not_of(" "));
+	str.erase(str.find_last_not_of(" ") + 1);
+	return str;
+}
+
+int main()
+{
+	FILE* infp;
+	FILE* train_outfp, * test_outfp;
+	infp = freopen("long_data.txt", "r", stdin);
+	train_outfp = fopen("testdata.txt", "w");
+	test_outfp = fopen("traindata.txt", "w");
+	int label;
+	int cnt = 0;
+	string str;
+	while(scanf("%d", &label)!=EOF)
+	{
+		cnt++;
+		printf("%d\n", cnt);
+		getchar();
+		getline(cin, str);
+		srand((unsigned)time(0));
+		int flag = rand() % 10;
+		if (label > 0 && label < 4)
+		{
+			if (flag<7)
+			{
+				fprintf(train_outfp, "%d ", label);
+				fprintf(train_outfp, "%s\n", ClearHeadTailSpace(str).c_str());
+			}
+			else
+			{
+				fprintf(test_outfp, "%d ", label);
+				fprintf(test_outfp, "%s\n", ClearHeadTailSpace(str).c_str());
+			}
+		}
+
+	}
+	fclose(infp);
+	fclose(train_outfp);
+	fclose(test_outfp);
+}

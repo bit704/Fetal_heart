@@ -1,0 +1,55 @@
+#include<cstdio>
+#include<vector>
+#include<iostream>
+#include<cstring>
+#include<queue>
+#include<algorithm>
+#include<string>
+#include<ctime>
+using namespace std;
+
+string& ClearHeadTailSpace(string& str)
+{
+	if (str.empty())
+	{
+		return str;
+	}
+
+	str.erase(0, str.find_first_not_of(" "));
+	str.erase(str.find_last_not_of(" ") + 1);
+	return str;
+}
+
+char str[20000];
+int main()
+{
+	FILE* infp = fopen("test.txt", "r");
+	FILE* outfp1 = fopen("test_data.txt", "w");
+	FILE* outfp2 = fopen("test_label.txt", "w");
+	int num;
+	char temp;
+	int cnt = 0;
+	while (fscanf(infp, "%d", &num) != EOF)
+	{
+		temp = fgetc(infp);
+		fprintf(outfp2, "%d\n", num);
+		for (int i = 0; i < 2400; i++)
+		{
+			if (i != 0)
+			{
+				fprintf(outfp1, " ");
+			}
+			fscanf(infp, "%d", &num);
+			temp = fgetc(infp);
+			fprintf(outfp1, "%d", num);
+		}
+		cnt++;
+		if (temp != '\n')
+		{
+			fgets(str, 20000, infp);
+		}
+		fprintf(outfp1, "\n");
+		printf("%d\n", cnt);
+	}
+	printf("%d\n", cnt);
+}

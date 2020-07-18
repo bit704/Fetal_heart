@@ -1,0 +1,45 @@
+#include<cstdio>
+#include<vector>
+#include<iostream>
+#include<fstream>
+#include<cstring>
+#include<algorithm>
+#include<string>
+#include<ctime>
+using namespace std;
+
+string& ClearHeadTailSpace(string& str)
+{
+	if (str.empty())
+	{
+		return str;
+	}
+
+	str.erase(0, str.find_first_not_of(" "));
+	str.erase(str.find_last_not_of(" ") + 1);
+	return str;
+}
+
+int main()
+{
+	ifstream in1("three_data.txt");
+	ifstream in2("traindata.txt");
+	ofstream out("train.txt");
+	string str;
+	int cnt = 0;
+	while (getline(in2,str))
+	{
+		out << str << endl;
+		cnt++;
+		printf("%d\n", cnt);
+		if (cnt % 40 == 0)
+		{
+			getline(in1, str);
+			if (!str.empty())
+			{
+				out << str << endl;
+			}
+		}
+	}
+	printf("end!\n");
+}
