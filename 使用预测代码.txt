@@ -1,0 +1,27 @@
+#使用模型对指定胎心数据数据进行预测
+infer_exe=fluid.Executor(place)
+infer_data=np.loadtxt("infer_data.txt",
+                      delimiter=" ",dtype=int)
+infer_data_image=to_image(infer_data).reshape(1,1,120,2400) 
+
+#先把要预测的数据画出来
+x=np.linspace(1,2400,2400) 
+plt.plot(x,infer_data)
+plt.show()
+
+#从指定目录中加载训练好的模型(inference model)
+[inference_program,   #预测用的program
+feed_target_names,    #是一个str列表，它包含需要在推理 Program 中提供数据的变量的名称。
+fetch_targets         #fetch_targets：是一个 Variable 列表，从中我们可以得到推断结果。
+] = fluid.io.load_inference_model(model_save_dir,infer_exe)
+
+#开始预测
+results =infer_exe.run(
+                       inference_program,                      #运行预测程序
+                       feed={feed_target_names[0]: infer_data_image},     #放入要预测的数据
+                       fetch_list=fetch_targets)               #得到推测结果
+#输出预测结果
+print('results',results)
+label_list =["1", "2", "3"]
+print("inferresults: %s" % label_list[np.argmax(results[0])])
+
