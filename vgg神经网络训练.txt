@@ -53,11 +53,11 @@ def mknet(input,type_size): #输入图片，分出的类别
             conv_batchnorm_drop_rate=dropouts,
             pool_type='max')
 
-    conv1 = conv_block(input, 64, 2, [0, 0])
-    conv2 = conv_block(conv1, 128, 2, [0, 0])
-    conv3 = conv_block(conv2, 256, 3, [0, 0, 0])
-    conv4 = conv_block(conv3, 512, 3, [0, 0, 0])
-    conv5 = conv_block(conv4, 512, 3, [0, 0, 0])
+    conv1 = conv_block(input, 64, 2, [0.25, 0])
+    conv2 = conv_block(conv1, 128, 2, [0.25, 0])
+    conv3 = conv_block(conv2, 256, 3, [0.25, 0.25, 0])
+    conv4 = conv_block(conv3, 512, 3, [0.25, 0.25, 0])
+    conv5 = conv_block(conv4, 512, 3, [0.25, 0.25, 0])
 
     drop = fluid.layers.dropout(x=conv5, dropout_prob=0.5)
     fc1 = fluid.layers.fc(input=drop, size=512, act=None)
@@ -85,8 +85,8 @@ accuracy =fluid.layers.accuracy(input=predict, label=label)
 test_program =fluid.default_main_program().clone(for_test=True)
 
 # 使用Adam优化器，定学习率为0.01。
-base_lr=0.1
-optimizer = fluid.optimizer.AdamOptimizer(learning_rate=fluid.layers.exponential_decay(learning_rate=base_lr,decay_steps=1733,decay_rate=0.85,staircase=True))
+base_lr=0.01
+optimizer = fluid.optimizer.AdamOptimizer(learning_rate=fluid.layers.exponential_decay(learning_rate=base_lr,decay_steps=27728,decay_rate=0.98,staircase=True))
 opts = optimizer.minimize(avg_cost)
 
 #定义使用CPU还是GPU，使用CPU时use_cuda = False,使用GPU时use_cuda = True
