@@ -18,18 +18,18 @@ def to_image(L):            #将1*2400连续胎心率数据点转化成120*2400�
     return image
 
 def data_reader(data,label,buffered_size=512):
-    def reader():
-        x=data.shape[0]
-        for i in range(0,x):
-            image=to_image(data[i,:])
-            yield image,[label[i]-1]  #算交叉熵label要从0开始
-    return reader
+  def reader():
+      x=data.shape[0]
+      for i in range(0,x):
+          image=to_image(data[i,:])
+          yield image,[label[i]-1]  #算交叉熵label要从0开始
+  return reader
 print('begin loading!')  
-train_data=np.loadtxt("/home/aistudio/external-libraries/data/train_data_nr.txt",delimiter=" ",dtype=int)
-train_data_label=np.loadtxt("/home/aistudio/external-libraries/data/train_label.txt",delimiter=" ",dtype=int)
+train_data=np.loadtxt("/home/aistudio/external-libraries/train_data.txt",delimiter=" ",dtype=int)
+train_data_label=np.loadtxt("/home/aistudio/external-libraries/train_label.txt",delimiter=" ",dtype=int)
 
-test_data=np.loadtxt("/home/aistudio/external-libraries/data/test_data_nr.txt",delimiter=" ",dtype=int)
-test_data_label=np.loadtxt("/home/aistudio/external-libraries/data/test_label.txt",delimiter=" ",dtype=int)
+test_data=np.loadtxt("/home/aistudio/external-libraries/test_data.txt",delimiter=" ",dtype=int)
+test_data_label=np.loadtxt("/home/aistudio/external-libraries/test_label.txt",delimiter=" ",dtype=int)
 print('successfully loading!')
 #构造训练、测试数据提供器
 BATCH_SIZE = 16
@@ -53,16 +53,16 @@ def mknet(input,type_size): #输入图片，分出的类别
             conv_batchnorm_drop_rate=dropouts,
             pool_type='max')
 
-    conv1 = conv_block(input, 64, 2, [0, 0])
-    conv2 = conv_block(conv1, 128, 2, [0, 0])
-    conv3 = conv_block(conv2, 256, 3, [0, 0, 0])
-    conv4 = conv_block(conv3, 512, 3, [0, 0, 0])
-    conv5 = conv_block(conv4, 512, 3, [0, 0, 0])
+    conv1 = conv_block(input, 64, 2, [0.25, 0])
+    conv2 = conv_block(conv1, 128, 2, [0.25, 0])
+    conv3 = conv_block(conv2, 256, 3, [0.25, 0.25, 0])
+    conv4 = conv_block(conv3, 512, 3, [0.25, 0.25, 0])
+    conv5 = conv_block(conv4, 512, 3, [0.25, 0.25, 0])
 
-    drop = fluid.layers.dropout(x=conv5, dropout_prob=0.25)
+    drop = fluid.layers.dropout(x=conv5, dropout_prob=0.5)
     fc1 = fluid.layers.fc(input=drop, size=512, act=None)
     bn = fluid.layers.batch_norm(input=fc1, act='relu')
-    drop2 = fluid.layers.dropout(x=bn, dropout_prob=0.25)
+    drop2 = fluid.layers.dropout(x=bn, dropout_prob=0.5)
     fc2 = fluid.layers.fc(input=drop2, size=512, act=None)
     predict = fluid.layers.fc(input=fc2, size=type_size, act='softmax')
     return predict
@@ -84,10 +84,8 @@ accuracy =fluid.layers.accuracy(input=predict, label=label)
 # 该fluid.default_main_program().clone()要在optimization之前使用.
 test_program =fluid.default_main_program().clone(for_test=True)
 
-base_lr=0.1
 # 使用Adam优化器，定初始学习率为0.1，采用指数下降，decay_rate设为0.85，15次训练后下降到0.009。
 optimizer = fluid.optimizer.AdamOptimizer(learning_rate=learning_rate=fluid.layers.exponential_decay(learning_rate=base_lr,decay_steps=1733,decay_rate=0.85,staircase=True))
-
 opts = optimizer.minimize(avg_cost)
 
 #定义使用CPU还是GPU，使用CPU时use_cuda = False,使用GPU时use_cuda = True
@@ -101,7 +99,7 @@ exe.run(fluid.default_startup_program())
 
 feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
-EPOCH_NUM = 15
+EPOCH_NUM = 5
 #训练过程数据记录
 all_train_iters=[]
 all_train_costs=[]
