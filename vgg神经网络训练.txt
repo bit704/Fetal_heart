@@ -7,7 +7,7 @@ from multiprocessing import cpu_count
 import matplotlib.pyplot as plt
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 def to_image(L):            #将1*2400连续胎心率数据点转化成120*2400胎心率曲线图
-    image=np.zeros([120,2400],dtype=np.int)
+    image=np.zeros([120,2400],dtype=np.float32)
     #np.zero(120,2400)好像有点问题
     for i in range(2400):
         if(L[i]<80):
@@ -85,7 +85,7 @@ accuracy =fluid.layers.accuracy(input=predict, label=label)
 test_program =fluid.default_main_program().clone(for_test=True)
 
 # 使用Adam优化器，定初始学习率为0.1，采用指数下降，decay_rate设为0.85，15次训练后下降到0.009。
-optimizer = fluid.optimizer.AdamOptimizer(learning_rate=learning_rate=fluid.layers.exponential_decay(learning_rate=base_lr,decay_steps=1733,decay_rate=0.85,staircase=True))
+optimizer = fluid.optimizer.AdamOptimizer(learning_rate=fluid.layers.exponential_decay(learning_rate=base_lr,decay_steps=1733,decay_rate=0.85,staircase=True))
 opts = optimizer.minimize(avg_cost)
 
 #定义使用CPU还是GPU，使用CPU时use_cuda = False,使用GPU时use_cuda = True
