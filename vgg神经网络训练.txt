@@ -1,10 +1,12 @@
 %matplotlib inline
 import os
-import paddle
 import numpy as np
+import paddle
 import paddle.fluid as fluid
 from multiprocessing import cpu_count
 import matplotlib.pyplot as plt
+import random
+
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 def to_image(L):            #将1*2400连续胎心率数据点转化成120*2400胎心率曲线图
     image=np.zeros([120,2400],dtype=np.int)
@@ -16,7 +18,6 @@ def to_image(L):            #将1*2400连续胎心率数据点转化成120*2400�
             L[i]=199
         image[L[i]-80][i]=1
     return image
-
 def data_reader(data,label,buffered_size=512):
     def reader():
         x=data.shape[0]
@@ -24,18 +25,39 @@ def data_reader(data,label,buffered_size=512):
             image=to_image(data[i,:])
             yield image,[label[i]-1]  #算交叉熵label要从0开始
     return reader
+def data_reader_dropout(data,label,buffered_size=512):
+    def reader():
+        x=data.shape[0]
+        for i in range(0,x):
+            if label[i]==1:
+                temp=np.random.randint(0,6)
+                if temp!=0:
+                    continue
+                image=to_image(data[i])
+                yield image,[label[i]-1]
+            elif label[i]==2:
+                temp=np.random.randint(0,5)
+                if temp<=2:
+                    continue
+                image=to_image(data[i])
+                yield image,[label[i]-1]
+            elif label[i]==3:
+                image=to_image(data[i])
+                yield image,[label[i]-1]
+    return reader
 print('begin loading!')  
-train_data=np.loadtxt("/home/aistudio/external-libraries/data/train_data_nr.txt",delimiter=" ",dtype=int)
-train_data_label=np.loadtxt("/home/aistudio/external-libraries/data/train_label.txt",delimiter=" ",dtype=int)
+train_data=np.loadtxt("external-libraries/train_data_nr.txt",delimiter=" ",dtype=int)
+train_data_label=np.loadtxt("/home/aistudio/data/data46533/train_label.txt",delimiter=" ",dtype=int)
 
-test_data=np.loadtxt("/home/aistudio/external-libraries/data/test_data_nr.txt",delimiter=" ",dtype=int)
-test_data_label=np.loadtxt("/home/aistudio/external-libraries/data/test_label.txt",delimiter=" ",dtype=int)
+test_data=np.loadtxt("external-libraries/test_data_nr.txt",delimiter=" ",dtype=int)
+test_data_label=np.loadtxt("/home/aistudio/data/data46533/test_label.txt",delimiter=" ",dtype=int)
+#test_data=np.loadtxt("/home/aistudio/external-libraries/data/train_data.txt",delimiter=" ",dtype=int)
+#test_data_label=np.loadtxt("/home/aistudio/external-libraries/data/train_label.txt",delimiter=" ",dtype=int)
 print('successfully loading!')
 #构造训练、测试数据提供器
-BATCH_SIZE = 16
-train_r =data_reader(train_data,train_data_label)
-train_reader =paddle.batch(paddle.reader.shuffle(reader=train_r,buf_size=128),
-                          batch_size=BATCH_SIZE)
+BATCH_SIZE = 32
+train_r =data_reader_dropout(train_data,train_data_label)
+train_reader =paddle.batch(paddle.reader.shuffle(reader=train_r,buf_size=128),batch_size=BATCH_SIZE)
 
 test_r=data_reader(test_data,test_data_label)
 test_reader = paddle.batch(test_r,batch_size=BATCH_SIZE)
@@ -53,17 +75,16 @@ def mknet(input,type_size): #输入图片，分出的类别
             conv_batchnorm_drop_rate=dropouts,
             pool_type='max')
 
-    conv1 = conv_block(input, 64, 2, [0.25, 0])
-    conv2 = conv_block(conv1, 128, 2, [0.25, 0])
-    conv3 = conv_block(conv2, 256, 3, [0.25, 0.25, 0])
-    conv4 = conv_block(conv3, 512, 3, [0.25, 0.25, 0])
-    conv5 = conv_block(conv4, 512, 3, [0.25, 0.25, 0])
+    conv1 = conv_block(input, 64, 2, [0.3, 0])
+    conv2 = conv_block(conv1, 128, 2, [0.4, 0])
+    conv3 = conv_block(conv2, 256, 3, [0.4, 0.4, 0])
+    conv4 = conv_block(conv3, 512, 3, [0.4, 0.4 ,0])
 
-    drop = fluid.layers.dropout(x=conv5, dropout_prob=0.5)
+    drop = fluid.layers.dropout(x=conv4, dropout_prob=0.5)
     fc1 = fluid.layers.fc(input=drop, size=512, act=None)
-    bn = fluid.layers.batch_norm(input=fc1, act='relu')
-    drop2 = fluid.layers.dropout(x=bn, dropout_prob=0.5)
-    fc2 = fluid.layers.fc(input=drop2, size=512, act=None)
+    bn = fluid.layers.batch_norm(input=fc1,act='relu')
+    drop2 = fluid.layers.dropout(x=bn, dropout_prob=0.6)
+    fc2 = fluid.layers.fc(input=drop2, size=1024, act=None)
     predict = fluid.layers.fc(input=fc2, size=type_size, act='softmax')
     return predict
 
@@ -82,11 +103,12 @@ accuracy =fluid.layers.accuracy(input=predict, label=label)
 
 # 克隆main_program得到test_program，使用参数for_test来区分该程序是用来训练还是用来测试
 # 该fluid.default_main_program().clone()要在optimization之前使用.
-test_program =fluid.default_main_program().clone(for_test=True)
+main_prog = fluid.default_main_program()
+test_program =main_prog.clone(for_test=True)
 
 # 使用Adam优化器，定学习率为0.01。
-base_lr=0.01
-optimizer = fluid.optimizer.AdamOptimizer(learning_rate=fluid.layers.exponential_decay(learning_rate=base_lr,decay_steps=27728/BATCH_SIZE,decay_rate=0.98,staircase=True))
+base_lr=0.001
+optimizer = fluid.optimizer.AdamOptimizer(learning_rate=fluid.layers.exponential_decay(learning_rate=base_lr,decay_steps=1000,decay_rate=0.9,staircase=True))
 opts = optimizer.minimize(avg_cost)
 
 #定义使用CPU还是GPU，使用CPU时use_cuda = False,使用GPU时use_cuda = True
@@ -95,12 +117,12 @@ use_cuda = True
 place = fluid.CUDAPlace(0) if use_cuda else fluid.CPUPlace()
 #创建一个Executor实例exe
 exe =fluid.Executor(place)
-#正式进行网络训练前，需先执行参数初始化
-exe.run(fluid.default_startup_program())
+prog=fluid.default_startup_program()
+exe.run(prog)
 
 feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
-EPOCH_NUM = 15
+EPOCH_NUM = 30
 #训练过程数据记录
 all_train_iters=[]
 all_train_costs=[]
@@ -111,28 +133,38 @@ all_train_accs=[]
 all_test_iters=[]
 all_test_costs=[]
 all_test_accs=[]
-"""
-path = "/home/aistudio/external-libraries/models"
-if os.path.exists(path):
-    fluid.io.load_persistables(exe, path, fluid.default_startup_program())
-"""
+
 print('begin training!')
 for pass_id in range(EPOCH_NUM):
+    
     train_accs = []
     train_costs = []
+    zero_cnt=0
+    one_cnt=0
+    two_cnt=0
     for batch_id, data in enumerate(train_reader()):
-        train_cost,train_acc =exe.run(program=fluid.default_main_program(),feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch均方误差和准确率        
+        for r in range(len(data)):
+            if data[r][1][0]==0:
+                zero_cnt+=1
+            elif data[r][1][0]==1:
+                one_cnt+=1
+            else:
+                two_cnt+=1
+        train_cost,train_acc =exe.run(main_prog,feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch均方误差和准确率        
         train_costs.append(train_cost[0])
         train_accs.append(train_acc[0])
-        
-        if batch_id % 100== 0:                                            
+        if batch_id % 200== 0:                                            
             print('Pass:%d, Batch:%d,Cost:%0.5f, Accuracy:%0.5f' %(pass_id, batch_id, train_cost[0],train_acc[0]))
     # 开始测试
+    print('zero_cnt:%s'%zero_cnt)
+    print('one_cnt:%s'%one_cnt)
+    print('two_cnt:%s'%two_cnt)
     test_costs = []                                                        #测试的损失值
     test_accs = []
     print('begin test!')                                                         #测试的准确率
     for batch_id, data in enumerate(test_reader()):
-        test_cost, test_acc =exe.run(program=test_program,feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch 误差、准确率
+        test_cost, test_acc =exe.run(test_program,feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch 误差、准确率
+        #test_cost, test_acc =exe.run(program=test_program,feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch 误差、准确率
         test_costs.append(test_cost[0])                                #记录每个batch的误差
         test_accs.append(test_acc[0])                             #记录每个batch的准确率
 
@@ -150,20 +182,12 @@ for pass_id in range(EPOCH_NUM):
     all_test_accs.append(test_acc_average)
     all_test_costs.append(test_cost_average)
 
-"""
-    prog = fluid.default_main_program()
-    path = "/home/aistudio/external-libraries/models"
-    if not os.path.exists(path):
-        os.makedirs(path)
-    fluid.io.save_persistables(exe, path, prog)
-    print('succeed in saving!')
-	
 model_save_dir ="/home/aistudio/external-libraries/work"
 if not os.path.exists(model_save_dir):
     os.makedirs(model_save_dir)
-print('savemodels to %s' % (model_save_dir))
 fluid.io.save_inference_model(model_save_dir,['image'],[predict],exe)
-"""
+print('savemodels to %s' % (model_save_dir))
+
 def draw_cost_process(title,iters,costs,label_cost):
     plt.title(title, fontsize=24)
     plt.xlabel("epoch", fontsize=20)
