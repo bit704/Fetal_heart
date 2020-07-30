@@ -1,0 +1,69 @@
+%matplotlib inline
+import os
+import paddle
+import numpy as np
+import paddle.fluid as fluid
+from multiprocessing import cpu_count
+import matplotlib.pyplot as plt
+import random
+#使用模型对指定胎心数据数据进行预测
+def to_image(L):            #将1*2400连续胎心率数据点转化成120*2400胎心率曲线图
+    image=np.zeros([120,2400],dtype=np.float32)
+    for i in range(2400):
+        if(L[i]<80):
+            L[i]=80
+        if(L[i]>=200):
+            L[i]=199
+        image[L[i]-80][i]=1
+    return image
+infer_exe=fluid.Executor(place)
+infer_data=np.loadtxt("/home/aistudio/data/data46533/train_data.txt",delimiter=" ",dtype=int)
+infer_label=np.loadtxt("/home/aistudio/data/data46533/train_label.txt",delimiter=" ",dtype=int)
+model_save_dir ="/home/aistudio/external-libraries/work"
+[inference_program,   #预测用的program
+feed_target_names,    #是一个str列表，它包含需要在推理 Program 中提供数据的变量的名称。
+fetch_targets         #fetch_targets：是一个 Variable 列表，从中我们可以得到推断结果。
+] = fluid.io.load_inference_model(model_save_dir,infer_exe)
+cnt=0
+onetwo=0
+onethree=0
+twoone=0
+twothree=0
+threeone=0
+threetwo=0
+for i in range(10000):
+    infer_data_image=to_image(infer_data[i]).reshape(1,1,120,2400) 
+
+    #先把要预测的数据画出来
+    #x=np.linspace(1,2400,2400) 
+    #plt.plot(x,infer_data[i])
+    #plt.show()
+    results =infer_exe.run(inference_program,feed={feed_target_names[0]: infer_data_image},fetch_list=fetch_targets)
+    label_list =["1", "2", "3"]
+    #print("inferresults: %s" % label_list[np.argmax(results[0])])
+    pre=int(label_list[np.argmax(results[0])])
+    if pre==int(infer_label[i]):
+        if(i%1000==0):
+            print("right!")
+    else:
+        cnt+=1
+        if pre==1:
+            if int(infer_label[i])==2:
+                twoone+=1
+            elif int(infer_label[i])==3:
+                threeone+=1
+        elif pre==2:
+            if int(infer_label[i])==1:
+                onetwo+=1
+            elif int(infer_label[i])==3:
+                threetwo+=1
+        elif pre==3:
+            if int(infer_label[i])==1:
+                onethree+=1
+            elif int(infer_label[i])==2:
+                twothree+=1
+
+print("total wrong:",cnt)
+print("one error:1->2:",onetwo,", 1->3:",onethree)
+print("two error:2->1:",twoone,", 2->3",twothree)
+print("three error:3->1",threeone,", 3->2",threetwo)
