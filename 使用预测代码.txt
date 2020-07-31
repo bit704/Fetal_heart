@@ -1,6 +1,19 @@
+def to_image(L):            #将1*2400连续胎心率数据点转化成120*2400胎心率曲线图
+    image=np.zeros([120,2400],dtype=np.float32)
+    #np.zero(120,2400)好像有点问题
+    for i in range(2400):
+        if(L[i]<80):
+            L[i]=80
+        if(L[i]>=200):
+            L[i]=199
+        image[L[i]-80][i]=1
+    return image
+
+model_save_dir ="/home/aistudio/external-libraries/work"
+
 #使用模型对指定胎心数据数据进行预测
 infer_exe=fluid.Executor(place)
-infer_data=np.loadtxt("infer_data.txt",
+infer_data=np.loadtxt("/home/aistudio/external-libraries/infer_data.txt",
                       delimiter=" ",dtype=int)
 infer_data_image=to_image(infer_data).reshape(1,1,120,2400) 
 
@@ -24,4 +37,3 @@ results =infer_exe.run(
 print('results',results)
 label_list =["1", "2", "3"]
 print("inferresults: %s" % label_list[np.argmax(results[0])])
-
