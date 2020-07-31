@@ -1,0 +1,218 @@
+%matplotlib inline
+import os
+import numpy as np
+import paddle
+import paddle.fluid as fluid
+from multiprocessing import cpu_count
+import matplotlib.pyplot as plt
+import random
+
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+os.environ['CUDA_LAUNCH_BLOCKING']='True'
+def to_image(L):            #将1*2400连续胎心率数据点转化成120*2400胎心率曲线图
+    image=np.zeros([120,2400],dtype=np.int)
+    #np.zero(120,2400)好像有点问题
+    for i in range(2400):
+        if(L[i]<80):
+            L[i]=80
+        if(L[i]>=200):
+            L[i]=199
+        image[L[i]-80][i]=1
+    return image
+def data_reader(data,label,buffered_size=512):
+    def reader():
+        x=data.shape[0]
+        for i in range(0,x):
+            image=to_image(data[i,:])
+            yield image,[label[i]==1]  #算交叉熵label要从0开始
+    return reader
+def data_reader_dropout(data,label,buffered_size=512):
+    def reader():
+        x=data.shape[0]
+        for i in range(0,x):
+            if label[i]==1:
+                temp=np.random.randint(0,5)
+                if temp<=1:
+                    continue
+                image=to_image(data[i])
+                yield image,[label[i]==1]
+            elif label[i]==2:
+                image=to_image(data[i])
+                yield image,[label[i]==1]
+            elif label[i]==3:
+                image=to_image(data[i])
+                yield image,[label[i]==1]
+    return reader
+print('begin loading!')  
+train_data=np.loadtxt("/home/aistudio/data/data46789/add_data.txt",delimiter=" ",dtype=int)
+train_data_label=np.loadtxt("/home/aistudio/data/data46789/add_label.txt",delimiter=" ",dtype=int)
+
+test_data=np.loadtxt("/home/aistudio/data/data46470/test_data.txt",delimiter=" ",dtype=int)
+test_data_label=np.loadtxt("/home/aistudio/data/data46470/test_label.txt",delimiter=" ",dtype=int)
+#test_data=np.loadtxt("/home/aistudio/external-libraries/data/train_data.txt",delimiter=" ",dtype=int)
+#test_data_label=np.loadtxt("/home/aistudio/external-libraries/data/train_label.txt",delimiter=" ",dtype=int)
+print('successfully loading!')
+#构造训练、测试数据提供器
+BATCH_SIZE = 16
+train_r =data_reader_dropout(train_data,train_data_label)
+train_reader =paddle.batch(paddle.reader.shuffle(reader=train_r,buf_size=128),batch_size=BATCH_SIZE)
+
+test_r=data_reader(test_data,test_data_label)
+test_reader = paddle.batch(test_r,batch_size=BATCH_SIZE)
+
+def resNet(ipt, typesize, depth=32):
+    def conv_bn_layer(input,ch_out,filter_size,stride,padding,act='relu',bias_attr=False):
+        tmp= fluid.layers.conv2d(input=input,filter_size=filter_size,num_filters=ch_out,stride=stride,padding=padding,act=None,bias_attr=bias_attr)
+        return fluid.layers.batch_norm(input=tmp, act=act)
+    def shortcut(input, ch_in, ch_out, stride):
+        if ch_in!= ch_out:
+            return conv_bn_layer(input, ch_out, 1, stride, 0, None)
+        else:
+            return input
+    def basicblock(input, ch_in, ch_out, stride):
+        tmp= conv_bn_layer(input, ch_out, 3, stride, 1)
+        tmp= conv_bn_layer(tmp, ch_out, 3, 1, 1, act=None, bias_attr=True)
+        short= shortcut(input, ch_in, ch_out, stride)
+        return fluid.layers.elementwise_add(x=tmp, y=short, act='relu')
+    def layer_warp(block_func, input, ch_in, ch_out, count, stride):
+        tmp= block_func(input, ch_in, ch_out, stride)
+        for i in range(1, count):
+            tmp= block_func(tmp, ch_out, ch_out, 1)
+        return tmp
+    
+    # depth should be one of 20, 32, 44, 56, 110, 1202
+    assert (depth- 2) % 6== 0
+    n= (depth- 2) // 6
+    nStages= {16, 64, 128}
+    conv1= conv_bn_layer(ipt, ch_out=16, filter_size=3, stride=1, padding=1)
+    res1= layer_warp(basicblock, conv1, 16, 16, n, 1)
+    res2= layer_warp(basicblock, res1, 16, 32, n, 2)
+    res3= layer_warp(basicblock, res2, 32, 64, n, 2)
+    pool= fluid.layers.pool2d(
+    input=res3, pool_size=8, pool_type='avg', pool_stride=1)
+    predict= fluid.layers.fc(input=pool, size=typesize, act='softmax')
+    return predict
+
+# 定义输入输出层
+# 定义两个张量
+image =fluid.layers.data(name='image', shape=[1, 120, 2400], dtype='float32') 
+label =fluid.layers.data(name='label', shape=[1], dtype='int64')
+
+# 获取分类器
+predict=resNet(image,2) #分成3类
+
+# 定义损失函数和准确率函数
+cost =fluid.layers.cross_entropy(input=predict, label=label)
+avg_cost =fluid.layers.mean(cost)
+accuracy =fluid.layers.accuracy(input=predict, label=label) 
+
+# 克隆main_program得到test_program，使用参数for_test来区分该程序是用来训练还是用来测试
+# 该fluid.default_main_program().clone()要在optimization之前使用.
+main_prog = fluid.default_main_program()
+test_program =main_prog.clone(for_test=True)
+
+# 使用Adam优化器，定学习率为0.01。
+base_lr=0.001
+optimizer = fluid.optimizer.AdamOptimizer(learning_rate=fluid.layers.exponential_decay(learning_rate=base_lr,decay_steps=1000,decay_rate=0.9,staircase=True))
+opts = optimizer.minimize(avg_cost)
+
+#定义使用CPU还是GPU，使用CPU时use_cuda = False,使用GPU时use_cuda = True
+#use_cuda = False
+use_cuda = True
+place = fluid.CUDAPlace(0) if use_cuda else fluid.CPUPlace()
+#创建一个Executor实例exe
+exe =fluid.Executor(place)
+prog=fluid.default_startup_program()
+exe.run(prog)
+
+feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
+
+EPOCH_NUM = 30
+#训练过程数据记录
+all_train_iters=[]
+all_train_costs=[]
+all_train_accs=[]
+
+
+#测试过程数据记录
+all_test_iters=[]
+all_test_costs=[]
+all_test_accs=[]
+
+print('begin training!')
+for pass_id in range(EPOCH_NUM):
+    
+    train_accs = []
+    train_costs = []
+    zero_cnt=0
+    one_cnt=0
+    two_cnt=0
+    for batch_id, data in enumerate(train_reader()):
+        for r in range(len(data)):
+            if data[r][1][0]==0:
+                zero_cnt+=1
+            elif data[r][1][0]==1:
+                one_cnt+=1
+            else:
+                two_cnt+=1
+        train_cost,train_acc =exe.run(main_prog,feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch均方误差和准确率        
+        train_costs.append(train_cost[0])
+        train_accs.append(train_acc[0])
+        if batch_id % 200== 0:                                            
+            print('Pass:%d, Batch:%d,Cost:%0.5f, Accuracy:%0.5f' %(pass_id, batch_id, train_cost[0],train_acc[0]))
+    # 开始测试
+    print('zero_cnt:%s'%zero_cnt)
+    print('one_cnt:%s'%one_cnt)
+    print('two_cnt:%s'%two_cnt)
+    test_costs = []                                                        #测试的损失值
+    test_accs = []
+    print('begin test!')                                                         #测试的准确率
+    for batch_id, data in enumerate(test_reader()):
+        test_cost, test_acc =exe.run(test_program,feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch 误差、准确率
+        #test_cost, test_acc =exe.run(program=test_program,feed=feeder.feed(data),fetch_list=[avg_cost, accuracy])         #fetch 误差、准确率
+        test_costs.append(test_cost[0])                                #记录每个batch的误差
+        test_accs.append(test_acc[0])                             #记录每个batch的准确率
+
+    test_cost_average = (sum(test_costs) /len(test_costs))        #计算误差平均值（误差和/误差的个数）
+    test_acc_average = (sum(test_accs) /len(test_accs))  #计算准确率平均值（ 准确率的和/准确率的个数）
+    train_cost_average = (sum(train_costs) /len(train_costs))
+    train_acc_average = (sum(train_accs) /len(train_accs))
+    print('Test:%d, Cost:%0.5f, ACC:%0.5f' %(pass_id, test_cost_average, test_acc_average))
+    print('Train:%d, Cost:%0.5f, ACC:%0.5f'%(pass_id, train_cost_average, train_acc_average))
+	
+    all_train_iters.append(pass_id)
+    all_train_accs.append(train_acc_average)
+    all_train_costs.append(train_cost_average)
+    all_test_iters.append(pass_id)
+    all_test_accs.append(test_acc_average)
+    all_test_costs.append(test_cost_average)
+
+model_save_dir ="/home/aistudio/external-libraries/work"
+if not os.path.exists(model_save_dir):
+    os.makedirs(model_save_dir)
+fluid.io.save_inference_model(model_save_dir,['image'],[predict],exe)
+print('savemodels to %s' % (model_save_dir))
+
+def draw_cost_process(title,iters,costs,label_cost):
+    plt.title(title, fontsize=24)
+    plt.xlabel("epoch", fontsize=20)
+    plt.ylabel("cost", fontsize=20)
+    plt.plot(iters,costs,color='red',label=label_cost)
+    plt.legend()
+    plt.grid()
+    plt.show()
+    
+def draw_acc_process(title,iters,acc,label_acc):
+    plt.title(title, fontsize=24)
+    plt.xlabel("epoch", fontsize=20)
+    plt.ylabel("acc", fontsize=20)
+    plt.plot(iters,acc,color='green',label=label_acc)
+    plt.legend()
+    plt.grid()
+    plt.show()
+    
+#调用绘制曲线
+draw_acc_process("training",all_train_iters, all_train_accs, "trainning acc")
+draw_acc_process("testing",all_test_iters, all_test_accs, "test acc")
+draw_cost_process("training",all_train_iters, all_train_costs, "trainning cost")
+draw_cost_process("testing",all_test_iters, all_test_costs, "test cost")
